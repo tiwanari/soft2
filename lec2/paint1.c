@@ -1,17 +1,25 @@
+/*
+ * 簡易ペイントソフト
+ *  課題1: 線を途切れされないように
+ * 学籍番号: 03-123006
+ * 氏名: 岩成達哉
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define WIDTH 70
-#define HEIGHT 40
-#define BUFSIZE 1000
-#define COM_OTHER 0
-#define COM_QUIT 1
-#define HISTORY_SIZE 100
+#define WIDTH 70    // 横幅
+#define HEIGHT 40   // 縦幅
+#define BUFSIZE 1000    // バッファの大きさ
+#define COM_OTHER 0     // 無いコマンド
+#define COM_QUIT 1      // 終了コマンド
+#define HISTORY_SIZE 100    // 履歴の多さ
 
-char canvas[WIDTH][HEIGHT];
-char *history[HISTORY_SIZE];
+char canvas[WIDTH][HEIGHT];     // キャンバス
+char *history[HISTORY_SIZE];    // 履歴(undo用)
 
+/* キャンバスを表示する関数 */
 void print_canvas(FILE *fp)
 {
     int x, y;
@@ -25,40 +33,60 @@ void print_canvas(FILE *fp)
         }
         fputc('\n', fp);
     }
-    fflush(fp);
+    fflush(fp); // すぐに書き出し
 }
 
+/* キャンバスの初期化をする関数 */
 int init_canvas()
 {
     memset(canvas, ' ', sizeof(canvas));
 }
 
+/* 線を描く関数 */
 void draw_line(int param[])
 {
-    int dx = abs(param[0] - param[2]), dy = abs(param[1] - param[3]);
-    int num = (dx >= dy) ? dx : dy;
-    double delta = (num != 0) ? 1.0 / num : 0;
+    int x0 = param[0], y0 = param[1], x1 = param[2], y1 = param[3];
+    int dx = abs(x1 - x0), dy = abs(y1 - y0);   // 差分の計算
+    int num = (dx >= dy) ? dx : dy;             // チェス盤距離
+    double delta = (num != 0) ? 1.0 / num : 0;  // 分割数を距離に応じて変える
     int i;
     
-    for (i = 0; i <= num; i++) {
-        int x = param[0] + delta * i * (param[2] - param[0]);
-        int y = param[1] + delta * i * (param[3] - param[1]);
-        canvas[x][y] = '#';
+    for (i = 0; i <= num; i++)
+    {
+        int x = x0 + delta * i * (x1 - x0) + 0.5;   // 四捨五入
+        int y = y0 + delta * i * (y1 - y0) + 0.5;   // 
+        
+        if (0 <= x && x < WIDTH && 0 <= y && y < HEIGHT) {  // 変更してないか
+            canvas[x][y] = '#'; // 変更する
+        }
     }
 }
 
+/* コマンドを実行する関数 */
 void exe_command(void (*func)(int []), int n)
 {
+    char *text;
     int *param = (int *)malloc(sizeof(int) * n);
     int i;
     
+    // 引数の格納
     for (i = 0; i < n; i++) {
-        param[i] = atoi(strtok(NULL, " "));
+        text = strtok(NULL, " \n");
+        if (text == NULL)
+            break;
+        
+        param[i] = atoi(text);
     }
     
-    func(param);
+    // 引数が足りなければ何もしない
+    if (i != n)
+        return;
+    
+    func(param);    // 関数ポインタで指定された内容で実行
+    free(param);
 }
 
+/* コマンドを解釈する関数 */
 int interpret_command(const char *command)
 {
     char buf[BUFSIZE];
@@ -68,10 +96,10 @@ int interpret_command(const char *command)
     char c = tolower(s[0]);
     
     switch (c) {
-        case 'l':
+        case 'l':   // 線を描く
             exe_command(draw_line, 4);
             break;
-        case 'q':
+        case 'q':   // 終了
             return COM_QUIT;
         default:
             break;
@@ -82,7 +110,7 @@ int interpret_command(const char *command)
 int main()
 {
     int com, n, i;
-    const char *canvas_file = "canvas.txt";
+    const char *canvas_file = "canvas.txt"; // 書き出すファイル名
     FILE *fp;
     char buf[BUFSIZE];
     
@@ -91,25 +119,27 @@ int main()
         return 1;
     }
     
-    init_canvas();
+    init_canvas();  // キャンバスの初期化
     print_canvas(fp);
     
-    n = 0;
+    n = 0;  // 現在のターン数を初期化
     while (1) {
         printf("%d > ", n);
-        fgets(buf, BUFSIZE, stdin);
+        fgets(buf, BUFSIZE, stdin); // 標準入力からの読み出し
         
+        // コマンドをそのまま残しておく
         history[n] = (char*)malloc(sizeof(char) * strlen(buf));
         strcpy(history[n], buf);
-        if (++n >= HISTORY_SIZE) break;
+        if (++n >= HISTORY_SIZE) break; // 履歴の限界まで
         
-        com = interpret_command(buf);
-        if (com == COM_QUIT) break;
+        com = interpret_command(buf);   // コマンドの実行
+        if (com == COM_QUIT) break; // 終了処理
         print_canvas(fp);
     }
     
     fclose(fp);
     
+    // コマンドの書き出し
     if ((fp = fopen("history.txt", "w")) != NULL) {
         for (i = 0; i < n; i++) {
             fprintf(fp, "%s", history[i]);
@@ -117,4 +147,5 @@ int main()
         }
         fclose(fp);
     }
+    return 0;
 }
