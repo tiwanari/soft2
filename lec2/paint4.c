@@ -1,22 +1,34 @@
+/*
+ * 簡易ペイントソフト
+ * ・undoを変更点を保持して戻す形に変更
+ *  (線形リストを動的スタックのように扱うことで表現)
+ * ・redoの実装
+ * ・ペンの変更を可能に
+ * ・BMPへの変換を可能に(ペンの文字によって濃淡画像を作る)
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// #include <process.h>
 #include <math.h>
 
-#define WIDTH 70
-#define HEIGHT 40
+#define WIDTH 64
+#define HEIGHT 64
 #define BUFSIZE 1000
 #define HISTORY_SIZE 100
 
-enum COM_STATE {COM_SUCCESS, COM_ERROR, COM_FEW_PARAM, COM_OTHER, COM_QUIT};
+enum COM_STATE {COM_SUCCESS, COM_ERROR, COM_FEW_PARAM, COM_OTHER, COM_QUIT, COM_UTIL};
 const char *ERROR_MES[] = {
     "正常に処理されました。\n",
-    "パラメータが不正です。\n",
-    "パラメータが足りません。\n",
-    "存在しないコマンドです。\n",
-    "終了します。\n"
+    "パラメータが不正です。ヘルプを見るためには H と入力してください。\n",
+    "パラメータが足りません。ヘルプを見るためには H と入力してください。\n",
+    "存在しないコマンドです。ヘルプを見るためには H と入力してください。\n",
+    "終了します。\n",
+    "正常に処理されました。\n"
 };
 
+/* 変更された点の情報 */
 typedef struct struct_diff {
     int x;
     int y;
@@ -24,20 +36,239 @@ typedef struct struct_diff {
     struct struct_diff *next;
 } DIFF;
 
+/* 1つのコマンドで変更された情報の集まり */
 typedef struct struct_diff_list {
-    DIFF *dif;
+    DIFF *diff;
     struct struct_diff_list *next;
 } STACK;
 
-char g_canvas[WIDTH][HEIGHT];
-STACK *history;
-STACK undo_history;
+unsigned char g_canvas[WIDTH][HEIGHT];  // canvas
+STACK *history;                         // 変更点
+STACK *undo_history;                    // redo用のundoしたリスト
+unsigned char pen = '#';                // ペンの文字
 
+/***** bitmap関連の関数 START *****/
+typedef unsigned short WORD;	// 2byte
+typedef unsigned int  DWORD;	// 4byte
+
+// ヘッダ情報
+WORD    bfType;
+DWORD   bfSize;
+WORD    bfReserved1,
+        bfReserved2;
+DWORD   bfOffBits;
+DWORD   biSize,
+        biWidth, biHeight;
+WORD    biPlanes,
+        biBitCount;
+DWORD   biCompression,
+        biSizeImage,
+        biXPelsPerMeter,
+        biYPelsPerMeter,
+        biClrUsed,
+        biClrImportant;
+
+unsigned char image_in[WIDTH][HEIGHT][3];	// 入力カラー画像配列
+unsigned char image_out[WIDTH][HEIGHT][3];	// 出力カラー画像配列
+unsigned char image_temp[WIDTH][HEIGHT];	// 濃淡画像作成用配列
+
+#define HIGH   255	/* 2値画像のhigh level */
+#define LOW      0	/* 2値画像のlow level */
+#define LEVEL  256	/* 濃度レベル数 */
+
+/* 24bit BMPのヘッダ情報を作成 */
+void init_bmp(void)
+{
+	// ファイル上ではBITMAPFILE HEADER, BITMAPINFO HEADERの順
+	// BITMAPINFO HEADER       説明(デフォルト値，よく使う値)
+	biSize = 0x28;          // BITMAPINFO HEADER構造体のサイズ(0x28)
+	biWidth = WIDTH;        // 画像の幅
+	biHeight = HEIGHT;      // 画像の高さ
+	biPlanes = 0x01;		// カラープレーン(0x01)
+	biBitCount = 0x18;		// ピクセルあたりのビット数(0x01,0x04,0x08,0x18)
+	biCompression = 0x00;	// 圧縮タイプ(0x00)
+	biSizeImage = biWidth * biHeight * (biBitCount / 8);	// ビットイメージバイト数
+	biXPelsPerMeter = 0x00;	// 水平解像度(0x00)
+	biYPelsPerMeter = 0x00;	// 垂直解像度(0x00)
+	biClrUsed = 0x00;		// カラーテーブル内のカラーインデックス数(0x00)
+	biClrImportant = 0x00;	// 重要なカラーインデックス数(0x00)
+    
+	// BITMAPFILE HEADER   説明(デフォルト値，よく使う値)
+	bfType = 0x4d42;        // ファイルのタイプ(0x4d42)
+	bfSize = biSizeImage + 32; // ファイルのバイト数 ヘッダ部分の大きさを加算
+	bfReserved1 = 0x00;     // 予約域(0x00)
+	bfReserved2 = 0x00;     // 予約域(0x00)
+	bfOffBits = 0x36;       // 先頭から画像情報までのオフセット(0x36)
+}
+
+/*
+ char型配列に格納されたデータをBMPファイルに出力する
+ 横幅は4の倍数にする
+ */
+void write_bmp(
+            unsigned char image[WIDTH][HEIGHT][3],
+            char *filename                         )
+{
+	FILE *fp;
+	int i, j, k;
+    
+	if ( (fp = fopen(filename, "wb")) == NULL )
+	{
+		printf("writeBmp: Open error!\n");
+		exit(1);
+	}
+	printf("output file : %s\n", filename);
+    
+	// ヘッダー情報
+	fwrite(&bfType, sizeof(bfType), 1, fp);
+	fwrite(&bfSize, sizeof(bfSize), 1, fp);
+	fwrite(&bfReserved1, sizeof(bfReserved1), 1, fp);
+	fwrite(&bfReserved2, sizeof(bfReserved2), 1, fp);
+	fwrite(&bfOffBits, sizeof(bfOffBits), 1, fp);
+    
+	fwrite(&biSize, sizeof(biSize), 1, fp);
+	fwrite(&biWidth, sizeof(biWidth), 1, fp);
+	fwrite(&biHeight, sizeof(biHeight), 1, fp);
+	fwrite(&biPlanes, sizeof(biPlanes), 1, fp);
+	fwrite(&biBitCount, sizeof(biBitCount), 1, fp);
+	fwrite(&biCompression, sizeof(biCompression), 1, fp);
+	fwrite(&biSizeImage, sizeof(biSizeImage), 1, fp);
+	fwrite(&biXPelsPerMeter, sizeof(biXPelsPerMeter), 1, fp);
+	fwrite(&biYPelsPerMeter, sizeof(biYPelsPerMeter), 1, fp);
+	fwrite(&biClrUsed, sizeof(biClrUsed), 1, fp);
+	fwrite(&biClrImportant, sizeof(biClrImportant), 1, fp);
+    
+	// ビットマップデータ
+	for (i = biHeight - 1; i >= 0; i--)
+	{
+		for (j = 0; j < biWidth; j++)
+		{
+			for (k=0; k<3; k++)
+            {
+                // 背景は白に
+                if (image[j][i][2-k] == ' ')
+                    image[j][i][2-k] = 255;
+                
+                fwrite(&image[j][i][2-k], 1, 1, fp);
+            }
+		}
+	}
+    
+	fclose(fp);
+}
+
+/* 256諧調白黒濃淡画像へ変換 */
+void to_256_bw(
+    unsigned char image[WIDTH][HEIGHT][3],
+    unsigned char image_bw[WIDTH][HEIGHT]  )
+{
+	int y, x, a;
+	for (y = 0; y < biHeight; y++)
+	{
+		for (x = 0; x < biWidth; x++)
+		{
+			a = 0.3*image[y][x][0] + 0.59*image[y][x][1] + 0.11*image[y][x][2];
+			if (a < LOW) a = LOW;
+			if (a > HIGH) a = HIGH;
+			image_bw[y][x] = a;
+		}
+	}
+}
+
+/* 閾値による画像へ変換 */
+void to_ascii_image(
+             unsigned char image_prev[WIDTH][HEIGHT],
+             unsigned char image_post[WIDTH][HEIGHT]  )
+{
+	int y, x, a;
+	for (y = 0; y < biHeight; y++)
+	{
+		for (x = 0; x < biWidth; x++)
+		{
+			a = image_prev[x][y];
+            if (a < 32)
+                a = '@';
+            else if(a < 64)
+                a = '#';
+            else if(a < 96)
+                a = '*';
+            else if(a < 128)
+                a = '/';
+            else if(a < 160)
+                a = '=';
+            else if(a < 192)
+                a = '-';
+            else if(a < 224)
+                a = '.';
+            else
+                a = ' ';
+			image_post[y][x] = a;
+		}
+	}
+}
+
+/* 濃淡画像を24ビットBMP形式に変換 */
+void to_24_bmp(
+    unsigned char image_bw[WIDTH][HEIGHT],
+    unsigned char image[WIDTH][HEIGHT][3] )
+{
+	int y, x, a;
+	for (y=0; y<biHeight; y++)
+	{
+		for (x=0; x<biWidth; x++)
+		{
+			a = image_bw[y][x];
+			image[y][x][0] = a;
+			image[y][x][1] = a;
+			image[y][x][2] = a;
+		}
+	}
+}
+
+/* textファイルを24ビットBMP形式に変換 */
+void from_text_to_24_bmp(
+    char *filename,
+    unsigned char image[WIDTH][HEIGHT][3])
+{
+	char temp;
+	FILE *fp;
+	int i, j, k;
+    
+	if ( (fp = fopen(filename, "r")) == NULL )
+	{
+		printf("fromTextTo24BMP: Open error!\n");
+		exit(1);
+	}
+    
+	for(i = 0; i < WIDTH; i++)
+	{
+		for(j = 0; j < HEIGHT; j++)
+		{
+			if( (temp = fgetc(fp)) != EOF )
+			{
+				image[i][j][0] = temp;
+				image[i][j][1] = temp;
+				image[i][j][2] = temp;
+			}
+			else
+			{
+				image[i][j][0] = 0;
+				image[i][j][1] = 0;
+				image[i][j][2] = 0;
+			}
+		}
+	}
+	fclose(fp);
+}
+/***** bitmap関連の関数 END *****/
+
+/***** history関連の関数 START *****/
 void make_history()
 {
     STACK *n;
     
     n = (STACK *)malloc(sizeof(STACK));
+    n->diff = NULL;
     n->next = history;
     history = n;
 }
@@ -46,36 +277,48 @@ void add_diff(int x, int y, char c)
 {
     DIFF *p, *n;
     
+    // 範囲内かどうか
+    if (0 > x || x >= WIDTH || 0 > y || y >= HEIGHT)
+        return;
+    
+    // 前の状態と異なるなら
     if (g_canvas[x][y] != c) {
         n = (DIFF *)malloc(sizeof(DIFF));
         n->x = x;
         n->y = y;
         n->before = g_canvas[x][y]; // 前の状態を持つ
-        n->next = history->dif;
-        history->dif = n;
+        n->next = history->diff;
+        history->diff = n;
         
         g_canvas[x][y] = c; // 変更しておく
     }
 }
 
-void delete_history()
+void delete_history(STACK **his)
 {
     STACK *d;
     DIFF *p, *q;
     
-    d = history;
+    d = *his;
     
     if (d != NULL)
     {
-        p = d->dif;
+        p = d->diff;
         while (p != NULL) {
             q = p;
             p = p->next;
             free(q);
         }
-        history = d->next;
+        *his = d->next;
         free(d);
     }
+}
+/***** history関連の関数 END *****/
+
+/***** canvas関連の関数 START *****/
+int init_canvas()
+{
+    memset(g_canvas, ' ', sizeof(g_canvas));
 }
 
 void print_canvas(FILE *fp)
@@ -84,8 +327,10 @@ void print_canvas(FILE *fp)
     
     fprintf(fp, "----------\n");
     
-    for (y = 0; y < HEIGHT; y++) {
-        for (x = 0; x < WIDTH; x++) {
+    for (y = 0; y < HEIGHT; y++)
+    {
+        for (x = 0; x < WIDTH; x++)
+        {
             char c = g_canvas[x][y];
             fputc(c, fp);
         }
@@ -93,12 +338,10 @@ void print_canvas(FILE *fp)
     }
     fflush(fp);
 }
+/***** canvas関連の関数 END *****/
 
-int init_canvas()
-{
-    memset(g_canvas, ' ', sizeof(g_canvas));
-}
 
+/***** 描画関連の関数 START *****/
 int draw_line(int param[])
 {
     int x0 = param[0], y0 = param[1], x1 = param[2], y1 = param[3];
@@ -107,13 +350,12 @@ int draw_line(int param[])
     double delta = (num != 0) ? 1.0 / num : 0;
     int i;
     
-    for (i = 0; i <= num; i++) {
+    for (i = 0; i <= num; i++)
+    {
         int x = x0 + delta * i * (x1 - x0) + 0.5;
         int y = y0 + delta * i * (y1 - y0) + 0.5;
         
-        if (0 <= x && x < WIDTH && 0 <= y && y < HEIGHT) {
-            add_diff(x, y, '#');
-        }
+        add_diff(x, y, pen);    // 変更してdiffを取る
     }
     return COM_SUCCESS;
 }
@@ -124,17 +366,14 @@ int draw_circle(int param[])
     int n = ceil(2 * M_PI * r);
     int i;
     
-    if (r <= 0) {
+    if (r <= 0)
         return COM_ERROR;
-    }
     
     for (i = 1; i < n; i++) {
         int x = x0 + r * cos((double)i / r);
         int y = y0 + r * sin((double)i / r);
         
-        if (0 <= x && x < WIDTH && 0 <= y && y < HEIGHT) {
-            add_diff(x, y, '#');
-        }
+        add_diff(x, y, pen);    // 変更してdiffを取る
     }
     
     return COM_SUCCESS;
@@ -151,58 +390,208 @@ int draw_rectangle(int param[])
     };
     int i;
     
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 4; i++)
+    {
         draw_line(point[i]);
     }
     
     return COM_SUCCESS;
 }
 
+void fill(int x, int y, unsigned char original)
+{
+    add_diff(x, y, pen); // penで塗る
+    
+    // 上
+    if (y - 1 > 0 && g_canvas[x][y-1] == original)
+        fill(x, y-1, original);
+    
+    // 左
+    if (x - 1 > 0 && g_canvas[x-1][y] == original)
+        fill(x-1, y, original);
+    
+    // 右
+    if (x + 1 < WIDTH && g_canvas[x+1][y] == original)
+        fill(x+1, y, original);
+    
+    // 下
+    if (y + 1 < HEIGHT && g_canvas[x][y+1] == original)
+        fill(x, y+1, original);
+}
 
+int fill_div(int param[])
+{
+    int x = param[0], y = param[1];
+    
+    // 初期位置の確認
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT)
+        return COM_ERROR;
+    
+    fill(x, y, g_canvas[x][y]);
+    return COM_SUCCESS;
+}
+
+int erase(int param[])
+{
+    int x0 = param[0], y0 = param[1], x1 = param[2], y1 = param[3];
+    int x, y;
+    
+    for (x = x0; x < x1; x++) {
+        for (y = y0; y < y1; y++) {
+            add_diff(x, y, ' ');
+        }
+    }
+}
+/***** 描画関連の関数 END *****/
+
+/***** Utility関連の関数 START *****/
+void show_help()
+{
+    printf("*****************************\n");
+    printf("【コマンド一覧】\n");
+    
+    printf("-- 描画関連 --\n");
+    printf("l  2点(x0, y0),(x1, y1)を結ぶ直線を引く\n");
+    printf("\tUsage: l x0 y0 x1 y1\n");
+    printf("c  点(x0, y0)を中心に半径rの円を描く\n");
+    printf("\tUsage: c x0 y0 r\n");
+    printf("r  2点(x0, y0),(x1, y1)を向かい合う点とする長方形を描く\n");
+    printf("\tUsage: r x0 y0 x1 y1\n");
+    printf("f  点(x0, y0)を含む領域の塗りつぶしを行う\n");
+    printf("\tUsage: f x0 y0\n");
+    printf("e  2点(x0, y0),(x1, y1)を向かい合う点とする長方形領域を消しゴムで消す\n");
+    printf("\tUsage: e x0 y0 x1 y1\n");
+    
+    
+    printf("\n");
+    
+    printf("-- Utility関連 --\n");
+    printf("P  penの文字(np)を変更する(defaultは#)\n");
+    printf("\tUsage: P np\n");
+    printf("U  undoをする\n");
+    printf("R  redoをする\n");
+    printf("W  現在のcanvasをBMPに変換する\n");
+    printf("\tUsage: W filename(拡張子は不要)\n");
+    printf("H  helpを表示する\n");
+    printf("Q  終了する\n");
+    printf("*****************************\n");
+}
+
+int undo(STACK **his, STACK **undo_his)
+{
+    STACK *d;
+    DIFF *p, *q;
+    char bef;
+    
+    d = *his;
+    
+    if (d != NULL)
+    {
+        p = d->diff;
+        while (p != NULL)
+        {
+            q = p;
+            p = p->next;
+            // 現在の状態を受け取る
+            bef = g_canvas[q->x][q->y];
+            g_canvas[q->x][q->y] = q->before;
+            q->before = bef;
+        }
+        *his = d->next;
+        
+        d->next = *undo_his;
+        *undo_his = d;
+    }
+    
+    return COM_UTIL;
+}
+
+int change_pen()
+{
+    char *param;
+    
+    param = strtok(NULL, " \n");
+    if (param == NULL)
+        return COM_FEW_PARAM;
+    
+    pen = param[0];
+    
+    return COM_UTIL;
+}
+
+int convert_to_bmp()
+{
+    char *param;
+    char *output;
+    
+    param = strtok(NULL, " \n");
+    
+    if (param == NULL)
+        return COM_FEW_PARAM;
+    
+    // 拡張子をつける
+    output = (char *)malloc(sizeof(char) * (strlen(param) + 4));
+    sprintf(output, "%s.bmp", param);
+    
+    init_bmp();
+    to_24_bmp(g_canvas, image_out);   // canvasを24ビットBMP形式に
+    write_bmp(image_out, output);
+    return COM_UTIL;
+}
+
+/* おまけ: テキストを絵にしてみる */
+int convert_to_bmp_from_txt()
+{
+    char *param;
+    char *input;
+    
+    param = strtok(NULL, " \n");
+    
+    if (param == NULL)
+        return COM_FEW_PARAM;
+    
+    // 拡張子をつける
+    input = (char *)malloc(sizeof(char) * (strlen(param) + 4));
+    sprintf(input, "%s.txt", param);
+    
+    init_bmp();
+    from_text_to_24_bmp(input, image_in);   // 文字列を24ビットBMP形式に
+    to_256_bw(image_in, image_temp);        // 濃淡画像に
+    to_ascii_image(image_temp, g_canvas);   // 濃さでアスキー文字による画像を生成
+    return COM_UTIL;
+}
+/***** Utility関連の実行関数 END *****/
+
+/***** コマンドの実行関数 START *****/
 int exe_command(int (*func)(int []), int n)
 {
     char *text;
     int *param = (int *)malloc(sizeof(int) * n);
+    int res;
     int i;
     
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < n; i++)
+    {
         text = strtok(NULL, " \n");
-        if (text == NULL) {
+        if (text == NULL)
             break;
-        }
+        
         param[i] = atoi(text);
     }
     
-    if (n != i) {
+    if (n != i)
         return COM_FEW_PARAM;
-    }
     
+    // 今までのUNDOの履歴を消去
+    while (undo_history != NULL)
+        delete_history(&undo_history);
+
     make_history(); // 変更点を保存する構造体を確保
-    return func(param);
+    res = func(param);  // 関数の実行
+    free(param);        // 消しておく
+    return res;
 }
 
-int undo()
-{
-    STACK *d;
-    DIFF *p, *q;
-    
-    d = history;
-    
-    if (d != NULL)
-    {
-        p = d->dif;
-        while (p != NULL) {
-            q = p;
-            p = p->next;
-            g_canvas[q->x][q->y] = q->before;
-            free(q);
-        }
-        history = d->next;
-        free(d);
-    }
-    
-    return COM_SUCCESS;
-}
 
 int interpret_command(const char *command)
 {
@@ -210,34 +599,52 @@ int interpret_command(const char *command)
     strcpy(buf, command);
     
     char *s = strtok(buf, " ");
-    char c = tolower(s[0]);
+    char c = s[0];
     
-    switch (c) {
+    switch (c)
+    {
         case 'l':
             return exe_command(draw_line, 4);
         case 'c':
             return exe_command(draw_circle, 3);
         case 'r':
             return exe_command(draw_rectangle, 4);
-        case 'u':
-            return undo();
-        case 'q':
+        case 'f':
+            return exe_command(fill_div, 2);
+        case 'e':
+            return exe_command(erase, 4);
+        case 'U':
+            return undo(&history, &undo_history);
+        case 'R':
+            return undo(&undo_history, &history);   // undoのundo
+        case 'Q':
             return COM_QUIT;
+        case 'H':
+            show_help();
+            return COM_UTIL;
+        case 'P':
+            return change_pen();
+        case 'W':
+            return convert_to_bmp();
+        case 'T':
+            return convert_to_bmp_from_txt();
         default:
             break;
     }
     return COM_OTHER;
 }
+/***** コマンドの実行関数 END *****/
 
 int main()
 {
     int com, i;
     const char *canvas_file = "canvas.txt";
-    const char *history_file = "history.txt";
+    const char *history_file = "_history_temp.txt";
     FILE *fp_can, *fp_his;
     char buf[BUFSIZE];
     
-    if ((fp_can = fopen(canvas_file, "w")) == NULL) {
+    if ((fp_can = fopen(canvas_file, "w")) == NULL)
+    {
         fprintf(stderr, "error: cannot open %s.\n", canvas_file);
         return 1;
     }
@@ -245,29 +652,55 @@ int main()
     init_canvas();
     print_canvas(fp_can);
     
-    if ((fp_his = fopen(history_file, "w")) == NULL) {
+    if ((fp_his = fopen(history_file, "w")) == NULL)
+    {
         fprintf(stderr, "error: cannot open %s.\n", canvas_file);
         return 1;
     }
     
-    while (1) {
-        printf("> ");
+    while (1)
+    {
+        printf("現在のpen[%c] > ", pen);
+        
         fgets(buf, BUFSIZE, stdin);
         
         com = interpret_command(buf);
-        if (com != COM_SUCCESS) {
-            printf("%s", ERROR_MES[com]);
-            if (com == COM_QUIT) break;
-            if (com == COM_FEW_PARAM || com == COM_ERROR)
-                delete_history();
+        
+        if (com != COM_SUCCESS && com != COM_UTIL && com != COM_QUIT)
+        {
+            printf("%s", ERROR_MES[com]);   // 問題を通知
+            
+            // コマンドがエラーだった場合は記録しない
+            if (com == COM_ERROR)
+                delete_history(&history);
         }
-        else {
+        else
+        {
             fprintf(fp_his, "%s", buf);
+            
+            // 終了
+            if (com == COM_QUIT)
+                break;
+            
+            print_canvas(fp_can);
         }
-        print_canvas(fp_can);
     }
     fclose(fp_can);
     fclose(fp_his);
+    
+    
+    // 解放
+    while (history != NULL)
+        delete_history(&history);
+    
+    while (undo_history != NULL)
+        delete_history(&undo_history);
+    
+    // ファイル名を変更
+    if(rename(history_file, "history.txt") != 0) {
+        printf("cannot save history\n");
+        return 1;
+    }
     
     return 0;
 }
