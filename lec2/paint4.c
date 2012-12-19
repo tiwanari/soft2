@@ -17,9 +17,66 @@ const char *ERROR_MES[] = {
     "終了します。\n"
 };
 
+typedef struct struct_diff {
+    int x;
+    int y;
+    char before;
+    struct struct_diff *next;
+} DIFF;
+
+typedef struct struct_diff_list {
+    DIFF *dif;
+    struct struct_diff_list *next;
+} STACK;
+
 char g_canvas[WIDTH][HEIGHT];
-char *g_history[HISTORY_SIZE];
-int g_history_n = 0;
+STACK *history;
+STACK undo_history;
+
+void make_history()
+{
+    STACK *n;
+    
+    n = (STACK *)malloc(sizeof(STACK));
+    n->next = history;
+    history = n;
+}
+
+void add_diff(int x, int y, char c)
+{
+    DIFF *p, *n;
+    
+    if (g_canvas[x][y] != c) {
+        n = (DIFF *)malloc(sizeof(DIFF));
+        n->x = x;
+        n->y = y;
+        n->before = g_canvas[x][y]; // 前の状態を持つ
+        n->next = history->dif;
+        history->dif = n;
+        
+        g_canvas[x][y] = c; // 変更しておく
+    }
+}
+
+void delete_history()
+{
+    STACK *d;
+    DIFF *p, *q;
+    
+    d = history;
+    
+    if (d != NULL)
+    {
+        p = d->dif;
+        while (p != NULL) {
+            q = p;
+            p = p->next;
+            free(q);
+        }
+        history = d->next;
+        free(d);
+    }
+}
 
 void print_canvas(FILE *fp)
 {
@@ -55,7 +112,7 @@ int draw_line(int param[])
         int y = y0 + delta * i * (y1 - y0) + 0.5;
         
         if (0 <= x && x < WIDTH && 0 <= y && y < HEIGHT) {
-            g_canvas[x][y] = '#';
+            add_diff(x, y, '#');
         }
     }
     return COM_SUCCESS;
@@ -70,13 +127,13 @@ int draw_circle(int param[])
     if (r <= 0) {
         return COM_ERROR;
     }
-        
+    
     for (i = 1; i < n; i++) {
         int x = x0 + r * cos((double)i / r);
         int y = y0 + r * sin((double)i / r);
         
         if (0 <= x && x < WIDTH && 0 <= y && y < HEIGHT) {
-            g_canvas[x][y] = '#';
+            add_diff(x, y, '#');
         }
     }
     
@@ -120,23 +177,31 @@ int exe_command(int (*func)(int []), int n)
         return COM_FEW_PARAM;
     }
     
+    make_history(); // 変更点を保存する構造体を確保
     return func(param);
 }
 
-void undo()
+int undo()
 {
-    int i;
+    STACK *d;
+    DIFF *p, *q;
     
-    free(g_history[--g_history_n]);
+    d = history;
     
-    if (g_history_n > 0) {
-        free(g_history[--g_history_n]);
-        init_canvas();
-        
-        for (i = 0; i < g_history_n; i++) {
-            interpret_command(g_history[i]);
+    if (d != NULL)
+    {
+        p = d->dif;
+        while (p != NULL) {
+            q = p;
+            p = p->next;
+            g_canvas[q->x][q->y] = q->before;
+            free(q);
         }
+        history = d->next;
+        free(d);
     }
+    
+    return COM_SUCCESS;
 }
 
 int interpret_command(const char *command)
@@ -155,8 +220,7 @@ int interpret_command(const char *command)
         case 'r':
             return exe_command(draw_rectangle, 4);
         case 'u':
-            undo();
-            break;
+            return undo();
         case 'q':
             return COM_QUIT;
         default:
@@ -169,43 +233,41 @@ int main()
 {
     int com, i;
     const char *canvas_file = "canvas.txt";
-    FILE *fp;
+    const char *history_file = "history.txt";
+    FILE *fp_can, *fp_his;
     char buf[BUFSIZE];
     
-    if ((fp = fopen(canvas_file, "w")) == NULL) {
+    if ((fp_can = fopen(canvas_file, "w")) == NULL) {
         fprintf(stderr, "error: cannot open %s.\n", canvas_file);
         return 1;
     }
     
     init_canvas();
-    print_canvas(fp);
+    print_canvas(fp_can);
+    
+    if ((fp_his = fopen(history_file, "w")) == NULL) {
+        fprintf(stderr, "error: cannot open %s.\n", canvas_file);
+        return 1;
+    }
     
     while (1) {
-        printf("%d > ", g_history_n);
+        printf("> ");
         fgets(buf, BUFSIZE, stdin);
-        
-        g_history[g_history_n] = (char*)malloc(sizeof(char) * strlen(buf));
-        strcpy(g_history[g_history_n], buf);
-        if (++g_history_n >= HISTORY_SIZE) break;
         
         com = interpret_command(buf);
         if (com != COM_SUCCESS) {
             printf("%s", ERROR_MES[com]);
-            free(g_history[--g_history_n]); // 意味が無いものは消す
+            if (com == COM_QUIT) break;
+            if (com == COM_FEW_PARAM || com == COM_ERROR)
+                delete_history();
         }
-        if (com == COM_QUIT) break;
-        print_canvas(fp);
-    }
-    
-    fclose(fp);
-    
-    if ((fp = fopen("history.txt", "w")) != NULL) {
-        for (i = 0; i < g_history_n; i++) {
-            fprintf(fp, "%s", g_history[i]);
-            free(g_history[i]);
+        else {
+            fprintf(fp_his, "%s", buf);
         }
-        fclose(fp);
+        print_canvas(fp_can);
     }
+    fclose(fp_can);
+    fclose(fp_his);
     
     return 0;
 }
