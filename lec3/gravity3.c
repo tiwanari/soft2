@@ -105,8 +105,9 @@ void update_velocities(const double dt)
     for (i = 0; i < nstars; i++) {
         double ax = 0;
         double ay = 0;
+        if (stars[i].m < 0) continue;   // 消去済み
         for (j = 0; j < nstars; j++) {
-            if (i == j) continue;
+            if (i == j || stars[j].m < 0) continue; // 消去済み
             const double dx = stars[j].x - stars[i].x;
             const double dy = stars[j].y - stars[i].y;
             const double r = sqrt(dx * dx + dy * dy);
