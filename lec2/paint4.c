@@ -5,6 +5,10 @@
  * ・redoの実装
  * ・ペンの変更を可能に
  * ・BMPへの変換を可能に(ペンの文字によって濃淡画像を作る)
+ * ・塗りつぶし
+ * ・ヘルプの表示
+ * ・テキストファイルの読み込み(64*64)[未完]
+ * ・ビットマップファイルの読み込み[しきい値を設けてアスキー文字で表示しようとしたが未完]
  * 学籍番号: 03-123006
  * 氏名: 岩成達哉
  */
@@ -14,8 +18,8 @@
 #include <string.h>
 #include <math.h>
 
-#define WIDTH 32    // 横幅
-#define HEIGHT 32   // 縦幅
+#define WIDTH 64    // 横幅
+#define HEIGHT 64   // 縦幅
 #define BUFSIZE 1000    // バッファの大きさ
 
 // コマンドの結果を表すコードとコメント
@@ -229,8 +233,8 @@ void to_24_bmp(
 
 /* textファイルを24ビットBMP形式に変換 */
 int from_text_to_24_bmp(
-    char *filename,
-    unsigned char image[WIDTH][HEIGHT][3])
+                        char *filename,
+                        unsigned char image[WIDTH][HEIGHT][3])
 {
 	char temp;
 	FILE *fp;
@@ -265,6 +269,44 @@ int from_text_to_24_bmp(
     return 0;
 }
 
+/* textファイルを読み込む関数 */
+int from_text(
+        char *filename,
+        unsigned char image[WIDTH][HEIGHT])
+{
+	char temp;
+	FILE *fp;
+	int i, j;
+    int flag = 1;
+    
+	if ( (fp = fopen(filename, "r")) == NULL )
+	{
+		printf("File Open Error: %s\n", filename);
+		return -1;
+	}
+    
+    for(j = 0; j < WIDTH; j++)
+    {
+        for(i = 0; i < HEIGHT; i++)
+        {
+			if( (temp = fgetc(fp)) != EOF)
+			{
+                if (temp == '\n') {
+                    continue;
+                }
+                else
+                    image[i][j] = temp;
+			}
+			else
+			{
+				image[i][j] = ' ';
+			}
+		}
+	}
+	fclose(fp);
+    
+    return 0;
+}
 
 /* 24BMPを読み込み */
 int from_24_bmp_to_text(
@@ -504,6 +546,7 @@ int erase(int param[])
             add_diff(x, y, ' ');    // 空白で塗りつぶし
         }
     }
+    return COM_SUCCESS;
 }
 /***** 描画関連の関数 END *****/
 
@@ -667,11 +710,12 @@ int convert_to_bmp_from_txt()
     sprintf(input, "%s.txt", param);
     
     init_bmp();
-    if (from_text_to_24_bmp(input, image_in) != 0)   // 文字列を24ビットBMP形式に
+    
+    if (from_text(input, image_temp) != 0)   // 文字列を24ビットBMP形式に
         return COM_ERROR;   // 開けなかったとき
     
-    to_256_bw(image_in, g_canvas);        // 濃淡画像に
-    to_ascii_image(image_temp, g_canvas);   // 濃さでアスキー文字による画像を生成
+    memcpy(g_canvas, image_temp, sizeof(unsigned char) * HEIGHT * WIDTH); // cpy
+    //to_ascii_image(image_temp, g_canvas);   // 濃さでアスキー文字による画像を生成
     return COM_UTIL;
 }
 /***** Utility関連の実行関数 END *****/

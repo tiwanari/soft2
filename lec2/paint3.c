@@ -197,7 +197,7 @@ int main()
         printf("%d > ", g_history_n);
         fgets(buf, BUFSIZE, stdin); // 標準入力からの読み出し
         
-        history[g_history_n] = (char*)malloc(sizeof(char) * strlen(buf));
+        history[g_history_n] = (char*)malloc(sizeof(char) * (strlen(buf) + 1));
         strcpy(history[g_history_n], buf);
         if (++g_history_n >= HISTORY_SIZE) break;// 履歴の限界まで
         

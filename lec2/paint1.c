@@ -128,7 +128,7 @@ int main()
         fgets(buf, BUFSIZE, stdin); // 標準入力からの読み出し
         
         // コマンドをそのまま残しておく
-        history[n] = (char*)malloc(sizeof(char) * strlen(buf));
+        history[n] = (char*)malloc(sizeof(char) * (strlen(buf) + 1));
         strcpy(history[n], buf);
         if (++n >= HISTORY_SIZE) break; // 履歴の限界まで
         
