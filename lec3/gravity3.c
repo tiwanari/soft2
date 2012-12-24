@@ -12,7 +12,7 @@
 
 #define WIDTH 75    // 幅
 #define HEIGHT 50   // 高さ
-#define EPSILON 1   // 融合する距離の基準
+#define EPSILON 0.1   // 融合する距離の基準
 #define DELETED -100.0  // 消去されたかどうか
 
 const double G = 1.0;   // 万有引力定数
@@ -29,9 +29,15 @@ struct star
 
 // 2つおく
 struct star stars[] = {
+    
+    { 1.0, -10.0, 0.0, 0.0, 0.0 },
+    { 0.5,  10.0, 0.0, 0.1, 0.0 },
+    /*
     { 1.0, -10.0, 5.0, 0.1, 0.0 },
     { 0.5,  10.0, 10.0, 0.0, 0.2 },
-    { 0.5,  0.0, 0.0, 0.1, 0.2 }, };
+    { 0.5,  0.0, 0.0, 0.1, 0.2 }, 
+     */
+};
 
 // 星の数
 const int nstars = sizeof(stars) / sizeof(struct star);
