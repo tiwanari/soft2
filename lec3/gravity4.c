@@ -38,10 +38,10 @@ Star stars[] = {
 };
 
 // 星の数
-const int nstars = sizeof(stars) / sizeof(Star);
+int nstars = sizeof(stars) / sizeof(Star);
 
 /* 星の表示をする関数 */
-void plot_stars(FILE *fp, const double t)
+void plot_stars(FILE *fp, double t)
 {
     int i;
     char space[WIDTH][HEIGHT];    // 表示用
@@ -78,7 +78,7 @@ void plot_stars(FILE *fp, const double t)
 }
 
 /* 衝突の判定をする関数 */
-void check_collision()
+void check_collision(void)
 {
     int i, j;
     
@@ -106,7 +106,7 @@ void check_collision()
 }
 
 /* 速度の更新をする関数 */
-void update_velocities(const double dt)
+void update_velocities(double dt)
 {
     int i, j;
     
@@ -130,7 +130,7 @@ void update_velocities(const double dt)
 }
 
 /* 位置を更新する関数 */
-void update_positions(const double dt)
+void update_positions(double dt)
 {
     int i;
     for (i = 0; i < nstars; i++) {
