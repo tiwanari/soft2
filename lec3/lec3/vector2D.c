@@ -78,5 +78,5 @@ Vector2D scalar_mul(Vector2D v, double k)
   */
 void show_component(Vector2D v)
 {
-    printf("(%2f, %2f)\n", v.x, v.y);
+    printf("(%6.2f, %6.2f)", v.x, v.y);
 }
