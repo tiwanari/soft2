@@ -25,13 +25,12 @@ typedef struct _star
     double r;
     Vector2D p;
     Vector2D v;
-    struct _star *next;
 } Star;
 
 // 2つおく
 Star stars[] = {
-    { 1.0, 1.0, {-10.0, 0.0}, {0.0, 0.0}, NULL },
-    { 1.0, 1.0, { 10.0, 0.0}, {0.2, 0.0}, NULL },
+    { 1.0, 0.5, {-10.0, 0.0}, {0.0, 0.0} },
+    { 1.0, 1.0, { 10.0, 0.0}, {0.2, 0.0} },
     /*
     { 1.0, {-5.0, 0.0}, {0.0,  0.10}, 1.0 },
     { 1.0, { 5.0, 0.0}, {0.0, -0.10}, 1.0 },
@@ -99,6 +98,14 @@ void check_collision(void)
                 // 質量を更新して正しい速度を計算する
                 stars[i].m += stars[j].m;
                 stars[i].v = scalar_mul(stars[i].v, 1 / stars[i].m);
+                
+                // 位置の更新(中間にする)
+                stars[i].p = scalar_mul(add(stars[i].p, stars[j].p),
+                                        1.0 / 2.0);
+                
+                // 半径の更新(完全な球体として体積を足しあわせて考える)
+                stars[i].r = pow(pow(stars[i].r, 3) + pow(stars[j].r, 3),
+                                 1.0 / 3.0 );
                 
                 stars[j].m = DELETED; // 消したことにする
             }
