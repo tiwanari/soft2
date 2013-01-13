@@ -3,8 +3,8 @@
  * 氏名: 岩成達哉
  *  オセロAI
  *      課題3: Min-Max法の実装
- *          ll.268-281に結果を表示する関数show_result()をつけて
- *          l.320で表示するようにしています
+ *           ll.252-296のMax法とll.300-344のMin法の組み合わせによって，
+ *          Min-Max法を実装し，ll.386-404のcom_player()関数で呼び出して使うようにしました
  */
 
 #include <stdio.h>
@@ -14,17 +14,19 @@
 #include <time.h>
 
 #define is_in(x, y) ((x) >= 0 && (x) < 8 && (y) >= 0 && (y) < 8)
+
 #define TRUE 1
 #define FALSE 0
 
-#define DEPTH 4
-#define INFINITY 100000
+#define DEPTH 4         // 探索の深さ
+#define INFINITY 100000 // 十分大きい値を無限大とする
 
-#define MOVENUM 60
+#define MOVENUM 60      // 移動方法の最大
 
-#define BLACK 1
-#define WHITE -1
+#define BLACK 1         // 黒石
+#define WHITE -1        // 白石
 
+/* 盤面の位置を表す構造体の宣言 */
 typedef struct _xy
 {
     int x;
@@ -32,14 +34,14 @@ typedef struct _xy
 } XY;
 const XY PASSMOVE = {-1, -1};   // パスを表す
 
+// ひっくり返せるか確認する際の方向を表す構造体
 XY directions[8] = {
     { -1, -1 }, {  0, -1 }, {  1, -1 },
     { -1,  0 },             {  1,  0 },
     { -1,  1 }, {  0,  1 }, {  1,  1 }
 };
 
-int pre_board[DEPTH][8][8];
-int board[8][8];
+int board[8][8];    // 盤面
 
 // 評価ボード
 int eval_board[8][8] = {
@@ -201,19 +203,19 @@ int place_disk(const int side, const XY sq)
 /* ゲーム終了局面の評価値を返す関数(勝ち:∞, 引き分け:0, 負け:−∞) */
 int get_terminal_value(void)
 {
-	int mine, opposite;
+	int mine, opp;
     
     // 数をカウント
     if (turn == BLACK)
-        count_disk(&mine, &opposite);
+        count_disk(&mine, &opp);
     else
-        count_disk(&opposite, &mine);
+        count_disk(&opp, &mine);
     
-	if ( mine > opposite ) // Win
+	if (mine > opp) // Win
 		return INFINITY;
-	else if ( mine == opposite ) // DRAW
+	else if (mine == opp) // DRAW
 		return 0;
-	else // if ( diff < 0 ) // LOSE
+	else // if (diff < 0) // LOSE
 		return -INFINITY;
 }
 
@@ -264,7 +266,7 @@ int max_node(int depth, int max_depth, int side, XY *move)
     // 手がないとき
 	if (nmoves == 0)
 	{
-		if (generate_moves(-side, opp) == 0) // Game Over
+		if (generate_moves(-side, opp) == 0) // 相手もおけないときは終了
 			return get_terminal_value();
 		else    // 違うときはパス
 			moves[nmoves++] = PASSMOVE;
@@ -312,7 +314,7 @@ int min_node(int depth, int max_depth, int side, XY *move)
     // 手がないとき
 	if (nmoves == 0)
 	{
-		if (generate_moves(-side, opp) == 0) // Game Over
+		if (generate_moves(-side, opp) == 0) // 相手もおけないときは終了
 			return get_terminal_value();
 		else    // 違うときはパス
 			moves[nmoves++] = PASSMOVE;
@@ -396,10 +398,9 @@ void com_player(const int side, XY *move)
     }
     
     value = max_node(0, DEPTH, side, move); // Min-Max法で手を生成
-    if (value == INFINITY)
+    
+    if (value == INFINITY)  // 勝ち
         printf("COM Finds Win!\n");
-    else
-        printf("eval = %d\n", value);
 }
 
 /* ランダムに手を生成する関数 */
@@ -479,12 +480,9 @@ int main(int argc, char **argv)
         
         
         if (turn == human_side)
-        {
-            //man_player(turn, &nextmove);
-            randam_player(turn, &nextmove);
-        }
+            man_player(turn, &nextmove);    // 人間の番
         else
-            com_player(turn, &nextmove);
+            com_player(turn, &nextmove);    // COMの番
         
         // パスかどうかの判定
         if (nextmove.x != PASSMOVE.x && nextmove.y != PASSMOVE.y)
