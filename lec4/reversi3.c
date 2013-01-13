@@ -254,7 +254,7 @@ int max_node(int depth, int side, XY *move)
     int best = -INFINITY, value;
     int nmoves;
     XY moves[MOVENUM], opp[MOVENUM];
-    XY pre_board[8][8];
+    int pre_board[8][8];
     int i;
     
     if (depth == DEPTH)
@@ -302,7 +302,7 @@ int min_node(int depth, int side, XY *move)
     int best = INFINITY, value;
     int nmoves;
     XY moves[MOVENUM], opp[MOVENUM];
-    XY pre_board[8][8];
+    int pre_board[8][8];
     int i;
     
     if (depth == DEPTH)

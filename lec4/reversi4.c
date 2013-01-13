@@ -3,7 +3,11 @@
  * 氏名: 岩成達哉
  *  オセロAI
  *      課題4: 拡張機能の実装
- *
+ *          ・αβ枝刈りの実装
+ *          ・Negamax法の実装
+ *          ・COMのレベル(探索の深さ)の指定を可能に
+ *          ・ハンデの指定を可能に
+ *          ・代わりに打つ機能を追加
  */
 
 #include <stdio.h>
@@ -12,12 +16,12 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define is_in(x, y) ((x) >= 0 && (x) < 8 && (y) >= 0 && (y) < 8)
+int is_in(x, y) { return (x >= 0 && x < 8 && y >= 0 && y < 8); }
 
 #define TRUE 1
 #define FALSE 0
 
-#define DEPTH 10         // 探索の深さ
+#define DEPTH_LIMIT 7   // 探索の深さ
 #define INFINITY 100000 // 十分大きい値を無限大とする
 
 #define MOVENUM 60      // 移動方法の最大
@@ -45,7 +49,7 @@ XY directions[8] =
     { -1,  1 }, {  0,  1 }, {  1,  1 }
 };
 
-int board[8][8];    // 盤面
+char board[8][8];    // 盤面(charで十分)
 
 // 評価ボード
 int eval_board[8][8] =
@@ -61,12 +65,7 @@ int eval_board[8][8] =
 };
 
 int turn;   // 順番を表す
-
-/* 関数のプロトタイプ宣言 START */
-int min_node(int, int, int, XY *);
-int max_node(int, int, int, XY *);
-void count_disk(int *, int *);
-/* 関数のプロトタイプ宣言 END */
+int max_depth;  // 探索の深さ
 
 /* 盤面の初期化をする関数 */
 void init_board()
@@ -91,9 +90,10 @@ void print_board()
 		printf("%d|", y+1);
 		for (x = 0; x < 8; x++)
         {
-            if (board[x][y] == BLACK)
+            const char d = board[x][y];
+            if (d == BLACK)
                 printf("X|");
-            else if (board[x][y] == WHITE)
+            else if (d == WHITE)
                 printf("O|");
             else
                 printf(" |");
@@ -102,7 +102,25 @@ void print_board()
 		printf("\n");
 	}
     printf("\n");
+}
+
+/* ディスクの数をカウントする関数 */
+void count_disk(int *black, int *white)
+{
+    int x, y;
     
+    *black = *white = 0;
+    
+    for (x = 0; x < 8; x++)
+    {
+        for (y = 0; y < 8; y++)
+        {
+            if (board[x][y] == BLACK)
+                (*black)++;
+            else if(board[x][y] == WHITE)
+                (*white)++;
+        }
+    }
 }
 
 /* ひっくり返せるかどうかの判定をする関数 */
@@ -243,9 +261,10 @@ int eval_func(int side)
     {
         for (y = 0; y < 8; y++)
         {
-            if (board[x][y] == side)
+            const char d = board[x][y];
+            if (d == side)
                 value += eval_board[x][y];
-            else if (board[x][y] == -side)
+            else if (d == -side)
                 value -= eval_board[x][y];
         }
     }
@@ -259,10 +278,10 @@ int alpha_beta(int depth, int side, XY *move, int al, int be)
     int value;
     int nmoves;
     XY moves[MOVENUM], opp[MOVENUM];
-    XY pre_board[8][8];
+    char pre_board[8][8];
     int i;
     
-    if (depth == DEPTH)
+    if (depth == max_depth)
         return eval_func(side);
     
     // 手を生成
@@ -301,45 +320,6 @@ int alpha_beta(int depth, int side, XY *move, int al, int be)
 	}
     
 	return al;
-}
-
-/* 人間の入力を管理する関数 */
-void man_player(const int side, XY *move)
-{
-    XY moves[MOVENUM];
-    char buf[1000];
-    
-    // 手がなければパス
-    if (generate_moves(side, moves) == 0)
-    {
-        printf("Pass!\n");
-		printf("Press Enter!\n");
-		fgets(buf, sizeof(buf), stdin);
-        *move = PASSMOVE;
-        return ;
-    }
-    
-    while (1)
-    {
-        // 手の入力
-        do
-		{
-            printf("Where? ");
-            fgets(buf, sizeof(buf), stdin);
-		} while(strlen(buf) < 1
-                || buf[0] < 'a' || buf[0] > 'h'
-                || buf[1] < '1' || buf[1] > '8');
-        
-        move->x = buf[0] - 'a';
-        move->y = buf[1] - '1';
-        
-        
-        // 合法手かどうかの判定
-        if (is_legal_move(side, *move))
-            break;
-        else
-            printf("Illeagal Move\n\n");
-    }
 }
 
 /* COMの手を生成する関数 */
@@ -383,22 +363,54 @@ void randam_player(const int side, XY *move)
     *move = moves[rand() % nmoves];
 }
 
-/* ディスクの数をカウントする関数 */
-void count_disk(int *black, int *white)
+/* 人間の入力を管理する関数 */
+void man_player(const int side, XY *move)
 {
-    int x, y;
+    XY moves[MOVENUM];
+    char buf[1000];
+    int tmp;
     
-    *black = *white = 0;
-    
-    for (x = 0; x < 8; x++)
+    // 手がなければパス
+    if (generate_moves(side, moves) == 0)
     {
-        for (y = 0; y < 8; y++)
-        {
-            if (board[x][y] == BLACK)
-                (*black)++;
-            else if(board[x][y] == WHITE)
-                (*white)++;
-        }
+        printf("Pass!\n");
+		printf("Press Enter!\n");
+		fgets(buf, sizeof(buf), stdin);
+        *move = PASSMOVE;
+        return ;
+    }
+    
+    while (1)
+    {
+        // 手の入力
+        do
+		{
+            printf("Where? (\"help\": Com will help you) ");
+            fgets(buf, sizeof(buf), stdin);
+            
+            // 代わりに打つ
+            if (strstr(buf, "help") != NULL)
+            {
+                tmp = max_depth;            // 一時退避
+                max_depth = DEPTH_LIMIT;    // 最良の手を出すため
+                alpha_beta(0, side, move, ALPHA, BETA);
+                max_depth = tmp;    // もとに戻す
+                
+                return ;
+            }
+		} while(strlen(buf) < 1
+                || buf[0] < 'a' || buf[0] > 'h'
+                || buf[1] < '1' || buf[1] > '8');
+        
+        move->x = buf[0] - 'a';
+        move->y = buf[1] - '1';
+        
+        
+        // 合法手かどうかの判定
+        if (is_legal_move(side, *move))
+            break;
+        else
+            printf("Illeagal Move\n\n");
     }
 }
 
@@ -418,17 +430,51 @@ void show_result(void)
         printf("White Win!!\n");
 }
 
+/* ハンデを付ける関数 */
+void give_handicap(int handi, int hum)
+{
+    if (handi <  0)  board[0][0] = -hum;
+    if (handi < -1)  board[0][7] = -hum;
+    if (handi < -2)  board[7][0] = -hum;
+    if (handi < -3)  board[7][7] = -hum;
+    
+    if (handi > 0)  board[0][0] = hum;
+    if (handi > 1)  board[0][7] = hum;
+    if (handi > 2)  board[7][0] = hum;
+    if (handi > 3)  board[7][7] = hum;
+}
+
 int main(int argc, char **argv)
 {
     const int human_side = (argc >= 2) ? atoi(argv[1]) : 0; // 先攻と後攻の選択
     XY moves[MOVENUM];
+    int handi;
     
     init_board();   // 盤面の初期化
     print_board();  // 盤面の表示
+    max_depth = DEPTH_LIMIT;    // 探索の深さ
     
     srand((unsigned)time(NULL)); // 乱数列の初期化
     
-    
+    if (human_side == 1 || human_side == -1)    // 人が参加するとき
+    {
+        printf("Choose Com Level(1 ~ %d): ", DEPTH_LIMIT);
+        scanf("%d", &max_depth);
+        
+        // 丸める
+        if (max_depth < 1)              max_depth = 1;
+        if (max_depth > DEPTH_LIMIT)    max_depth = DEPTH_LIMIT;
+        printf("Level %d\n\n", max_depth);
+        
+        
+        printf("Do you want a handicap?\n");
+        printf("handi(-4 ~ 4): ");
+        scanf("%d", &handi);
+        give_handicap(handi, human_side);
+        print_board();  // 盤面の表示
+        getchar();    // 改行文字を削っておく
+    }
+        
     for (turn = 1;; turn *= -1)   // ターンを交代
     {
         XY nextmove;
