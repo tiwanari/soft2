@@ -3,6 +3,7 @@
  * 氏名: 岩成達哉
  *  オセロAI
  *      課題4: 拡張機能の実装
+ *
  */
 
 #include <stdio.h>
@@ -16,7 +17,7 @@
 #define TRUE 1
 #define FALSE 0
 
-#define DEPTH 6         // 探索の深さ
+#define DEPTH 10         // 探索の深さ
 #define INFINITY 100000 // 十分大きい値を無限大とする
 
 #define MOVENUM 60      // 移動方法の最大
@@ -255,7 +256,7 @@ int eval_func(int side)
 /* Negamax法 + αβ枝刈りで手を生成する */
 int alpha_beta(int depth, int side, XY *move, int al, int be)
 {
-    int best = -INFINITY, value;
+    int value;
     int nmoves;
     XY moves[MOVENUM], opp[MOVENUM];
     XY pre_board[8][8];
@@ -285,24 +286,21 @@ int alpha_beta(int depth, int side, XY *move, int al, int be)
         // 再帰(recursive)
 		value = -alpha_beta(depth + 1, -side, move, -be, -al);
 		
-        if (depth == 0)
-        {
-            printf(" -> %c%c\n",
-                   'a' + moves[i].x, '1' + moves[i].y);
-            printf("(%d), value = %d\n", depth, value);
-        }
         memcpy(board, pre_board, sizeof(board));    // 戻す
         
         // 値の更新
-        if (value >= best)
+        if (value > al)
         {
-            best = value;
+            al = value;
             if (depth == 0)
                 *move = moves[i];
         }
+        
+		// αβ枝刈り
+		if(value >= be) break;
 	}
     
-	return best;
+	return al;
 }
 
 /* 人間の入力を管理する関数 */
@@ -360,7 +358,7 @@ void com_player(const int side, XY *move)
     }
     
     value = alpha_beta(0, side, move, ALPHA, BETA); // Alpha-Beta法で手を生成
-    printf("value = %d\n", value);
+    //printf("value = %d\n", value);
     if (value == INFINITY)  // 勝ち
         printf("COM Finds Win!\n");
 }

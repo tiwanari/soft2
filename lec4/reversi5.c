@@ -2,9 +2,8 @@
  * 学籍番号: 03-123006
  * 氏名: 岩成達哉
  *  オセロAI
- *      課題3: Min-Max法の実装
- *           ll.252-296のMax法とll.300-344のMin法の組み合わせによって，
- *          Min-Max法を実装し，ll.386-404のcom_player()関数で呼び出して使うようにしました
+ *      課題4: 拡張機能の実装
+ *
  */
 
 #include <stdio.h>
@@ -13,7 +12,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define is_in(x, y) ((x) >= 0 && (x) < 8 && (y) >= 0 && (y) < 8)
+int is_in(x, y) { return (x >= 0 && x < 8 && y >= 0 && y < 8); }
 
 #define TRUE 1
 #define FALSE 0
@@ -26,6 +25,10 @@
 #define BLACK 1         // 黒石
 #define WHITE -1        // 白石
 
+// αβ枝刈り
+#define ALPHA   -200000
+#define BETA     200000
+
 /* 盤面の位置を表す構造体の宣言 */
 typedef struct _xy
 {
@@ -35,7 +38,8 @@ typedef struct _xy
 const XY PASSMOVE = {-1, -1};   // パスを表す
 
 // ひっくり返せるか確認する際の方向を表す構造体
-XY directions[8] = {
+XY directions[8] =
+{
     { -1, -1 }, {  0, -1 }, {  1, -1 },
     { -1,  0 },             {  1,  0 },
     { -1,  1 }, {  0,  1 }, {  1,  1 }
@@ -44,7 +48,8 @@ XY directions[8] = {
 int board[8][8];    // 盤面
 
 // 評価ボード
-int eval_board[8][8] = {
+int eval_board[8][8] =
+{
     {100, -40,  20,   5,   5,  20, -40, 100,},
     {-40, -80,  -1,  -1,  -1,  -1, -80, -40,},
     { 20,  -1,   5,   1,   1,   5,  -1,  20,},
@@ -58,8 +63,8 @@ int eval_board[8][8] = {
 int turn;   // 順番を表す
 
 /* 関数のプロトタイプ宣言 START */
-int min_node(int, int, XY *);
-int max_node(int, int, XY *);
+int min_node(int, int, int, XY *);
+int max_node(int, int, int, XY *);
 void count_disk(int *, int *);
 /* 関数のプロトタイプ宣言 END */
 
@@ -201,12 +206,13 @@ int place_disk(const int side, const XY sq)
 }
 
 /* ゲーム終了局面の評価値を返す関数(勝ち:∞, 引き分け:0, 負け:−∞) */
-int get_terminal_value(void)
+int get_terminal_value(int side)
 {
 	int mine, opp;
     
-    // 数をカウント
-    if (turn == BLACK)
+    // 数をカウント(どちらの番かで返す値を変える)
+    if ((turn == BLACK && turn == side)
+        || (turn == WHITE && turn == -side))
         count_disk(&mine, &opp);
     else
         count_disk(&opp, &mine);
@@ -220,15 +226,15 @@ int get_terminal_value(void)
 }
 
 /* 評価関数 */
-int eval_func(void)
+int eval_func(int side)
 {
     int value;
     XY moves[MOVENUM];
     int x, y;
     
     // 合法手数(自由度)の差を評価関数とする
-    value = generate_moves(turn, moves);
-    value -= generate_moves(-turn, moves);
+    value = generate_moves(side, moves);
+    value -= generate_moves(-side, moves);
     
     // 自由度1につき30としておく
     value *= 30;
@@ -237,9 +243,9 @@ int eval_func(void)
     {
         for (y = 0; y < 8; y++)
         {
-            if (board[x][y] == turn)
+            if (board[x][y] == side)
                 value += eval_board[x][y];
-            else if (board[x][y] == -turn)
+            else if (board[x][y] == -side)
                 value -= eval_board[x][y];
         }
     }
@@ -247,18 +253,17 @@ int eval_func(void)
     return value;
 }
 
-/* Min-Max法で手を生成する */
-// max
-int max_node(int depth, int side, XY *move)
+/* Negamax法 + αβ枝刈りで手を生成する */
+int alpha_beta(int depth, int side, XY *move, int al, int be)
 {
-    int best = -INFINITY, value;
+    int value;
     int nmoves;
     XY moves[MOVENUM], opp[MOVENUM];
     XY pre_board[8][8];
     int i;
     
     if (depth == DEPTH)
-        return eval_func();
+        return eval_func(side);
     
     // 手を生成
 	nmoves = generate_moves(side, moves);
@@ -267,7 +272,7 @@ int max_node(int depth, int side, XY *move)
 	if (nmoves == 0)
 	{
 		if (generate_moves(-side, opp) == 0) // 相手もおけないときは終了
-			return get_terminal_value();
+			return get_terminal_value(side);
 		else    // 違うときはパス
 			moves[nmoves++] = PASSMOVE;
 	}
@@ -279,68 +284,23 @@ int max_node(int depth, int side, XY *move)
 		place_disk(side, moves[i]);   // 一手進める
         
         // 再帰(recursive)
-		value = min_node(depth + 1, -side, move);   
+		value = -alpha_beta(depth + 1, -side, move, -be, -al);
 		
-        memcpy(board, pre_board, sizeof(board));    // 戻す
-		
-        // 値の更新
-        if (value >= best)
-        {
-            best = value;
-            if (depth == 0)
-                *move = moves[i];
-        }
-	}
-    
-	return best;
-}
-
-/* Min-Max法で手を生成する */
-// min
-int min_node(int depth, int side, XY *move)
-{
-    int best = INFINITY, value;
-    int nmoves;
-    XY moves[MOVENUM], opp[MOVENUM];
-    XY pre_board[8][8];
-    int i;
-    
-    if (depth == DEPTH)
-        return eval_func();
-    
-    // 手を生成
-	nmoves = generate_moves(side, moves);
-    
-    // 手がないとき
-	if (nmoves == 0)
-	{
-		if (generate_moves(-side, opp) == 0) // 相手もおけないときは終了
-			return get_terminal_value();
-		else    // 違うときはパス
-			moves[nmoves++] = PASSMOVE;
-	}
-    
-    // たどっていく
-    for (i = 0; i < nmoves; i++)
-	{
-        memcpy(pre_board, board, sizeof(board));    // 盤面の保存
-		place_disk(side, moves[i]);   // 一手進める
-        
-        // 再帰(recursive)
-		value = max_node(depth + 1, -side, move);
-        
         memcpy(board, pre_board, sizeof(board));    // 戻す
         
         // 値の更新
-        if (value <= best)
+        if (value > al)
         {
-            best = value;
+            al = value;
             if (depth == 0)
                 *move = moves[i];
         }
+        
+		// αβ枝刈り
+		if(value >= be) break;
 	}
     
-	return best;
+	return al;
 }
 
 /* 人間の入力を管理する関数 */
@@ -397,9 +357,8 @@ void com_player(const int side, XY *move)
         return ;
     }
     
-    value = max_node(0, side, move); // Min-Max法で手を生成
-    printf("value = %d\n", value);
-    
+    value = alpha_beta(0, side, move, ALPHA, BETA); // Alpha-Beta法で手を生成
+    //printf("value = %d\n", value);
     if (value == INFINITY)  // 勝ち
         printf("COM Finds Win!\n");
 }
