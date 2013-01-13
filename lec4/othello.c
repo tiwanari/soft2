@@ -33,7 +33,7 @@
 //座標からX座標またはY座標を計算するマクロ
 #define X(pos) (pos % ASIDE)
 #define Y(pos) (pos / ASIDE)
-#define TURNCOLOR( turn ) (turn + 1)
+#define TURNCOLOR(turn) (turn + 1)
 #define OPPONENT(turn) !turn
 
 #define TRUE 1
@@ -320,8 +320,7 @@ int search(int depth, int al, int be)
 	int movenum;//手の数
 	Move moves[MOVENUM];//手を入れる配列 an array of moves
 	int value;
-	int bestvalue = -INFINITY;
-
+    
 	if ( depth >= MAXDEPTH )// leaf node
 		return getEvaluationValue();
 
@@ -432,7 +431,7 @@ void comPlayer()
 //グローバル変数などを初期化
 void init()
 {
-	turn = WHITE_TURN;
+	turn = BLACK_TURN;
 	ply = 0;
 	stonenum[BLACK_TURN] = 2;
 	stonenum[WHITE_TURN] = 2;
