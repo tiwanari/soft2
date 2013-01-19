@@ -8,6 +8,8 @@
  *          ・COMのレベル(探索の深さ)の指定を可能に
  *          ・ハンデの指定を可能に
  *          ・代わりに打つ機能を追加
+ *          ・後半は探索を深めに
+ *          ・評価関数は打てる場所の数と評価ボードをもとに算出
  */
 
 #include <stdio.h>
@@ -16,12 +18,13 @@
 #include <stdlib.h>
 #include <time.h>
 
-int is_in(x, y) { return (x >= 0 && x < 8 && y >= 0 && y < 8); }
+#define is_in(x, y) (x >= 0 && x < 8 && y >= 0 && y < 8)
 
 #define TRUE 1
 #define FALSE 0
 
 #define DEPTH_LIMIT 7   // 探索の深さ
+#define DEPTH_INFINIT 64    // 終わりまで読むとき
 #define INFINITY 100000 // 十分大きい値を無限大とする
 
 #define MOVENUM 60      // 移動方法の最大
@@ -66,6 +69,7 @@ int eval_board[8][8] =
 
 int turn;   // 順番を表す
 int max_depth;  // 探索の深さ
+int ply = 0;    // 手の数
 
 /* 盤面の初期化をする関数 */
 void init_board()
@@ -97,7 +101,6 @@ void print_board()
                 printf("O|");
             else
                 printf(" |");
-                
         }
 		printf("\n");
 	}
@@ -323,7 +326,43 @@ int alpha_beta(int depth, int side, XY *move, int al, int be)
 }
 
 /* COMの手を生成する関数 */
-void com_player(const int side, XY *move)
+void com_player1(const int side, XY *move)
+{
+    XY moves[MOVENUM];
+    int value;
+    int tmp;
+	printf( "Com Thinking...\n");
+    
+    // 手がなければパス
+    if (generate_moves(side, moves) == 0)
+    {
+        printf("Pass!\n\n");
+        *move = PASSMOVE;
+        return ;
+    }
+    
+    tmp = max_depth;
+    // 読む数を変える
+    if(ply > 50)   // 終盤はたくさん読む
+        max_depth += 4;
+    else if(ply > 40)
+        max_depth += 3;
+    else if(ply > 30)
+        max_depth += 2;
+    
+    value = alpha_beta(0, side, move, ALPHA, BETA); // Alpha-Beta法で手を生成
+    
+    max_depth = tmp;    // もとに戻す
+    
+    //printf("value = %d\n", value);
+    if (value == INFINITY)  // 勝ち
+        printf("COM Finds Win!\n");
+    else if (value == -INFINITY)
+        printf("COM Finds Lose...\n");
+}
+
+/* COMの手を生成する関数 */
+void com_player2(const int side, XY *move)
 {
     XY moves[MOVENUM];
     int value;
@@ -338,10 +377,14 @@ void com_player(const int side, XY *move)
     }
     
     value = alpha_beta(0, side, move, ALPHA, BETA); // Alpha-Beta法で手を生成
+    
     //printf("value = %d\n", value);
     if (value == INFINITY)  // 勝ち
         printf("COM Finds Win!\n");
+    else if (value == -INFINITY)
+        printf("COM Finds Lose...\n");
 }
+
 
 /* ランダムに手を生成する関数 */
 void randam_player(const int side, XY *move)
@@ -488,7 +531,7 @@ int main(int argc, char **argv)
         if (turn == human_side)
             man_player(turn, &nextmove);    // 人間の番
         else
-            com_player(turn, &nextmove);    // COMの番
+            com_player1(turn, &nextmove);    // COMの番
         
         // パスかどうかの判定
         if (nextmove.x != PASSMOVE.x && nextmove.y != PASSMOVE.y)
@@ -498,6 +541,7 @@ int main(int argc, char **argv)
                    'a' + nextmove.x, '1' + nextmove.y);
             place_disk(turn, nextmove); // ディスクの設置
             print_board();          // 盤面の表示
+            ply++;  // 手数をカウント
         }
     }
     show_result();  // 結果の表示
