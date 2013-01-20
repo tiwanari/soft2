@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include "optimize.h"
 
-#define EPSILON 0.00000001  // 誤差の閾値
+#define EPSILON 0.0001  // 誤差の閾値
 #define TRY_NUM 1000000     // 試行回数の限界
 #define TAU ((sqrt(5.0) - 1.0) / 2.0)   // 黄金率
 
@@ -30,6 +30,7 @@ double calc_norm(const int dim, double v[])
 /*
  *  直線探索
  *  f(x(k) + α * d(k)) を最小にするαを求める
+ *  http://www.sc.kansai-u.ac.jp/STL/view_file0.php?id=258&file=2008/10/6/09/258/jyugyou/upQxwD4j.pdf
  */
 double line_search(const int dim, const double x[], const double d[], 
                    double (*get_value)(const double []))

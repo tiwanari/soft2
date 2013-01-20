@@ -54,16 +54,18 @@ void mal_matrix(const int dim, const double mat1[], const double mat2[], double 
  *  BFGS公式により擬似ヘッシアンを作る
  *  H[k+1] = A H[k] A + B
  *  ただし，A = (I - y[(s)^T] / [(y)^T]s), B = y[(y)^T] / [(y)^T]s
+ *  http://www.sist.ac.jp/~suganuma/kougi/other_lecture/SE/opt/nonlinear/nonlinear.htm#2.7
  */
 void f_quasi_hessian(const double y[], const double s[], double hes[])
 {
     int dim = f_dimension();    // 次元
-    double *mat[3];
-    const int mat_num = 3;
-    double *tmp = (double *)malloc(dim * dim * sizeof(double)); // 次のヘッシアン
-    double c = 0.0;
+    double *mat[3];             // 途中計算の行列
+    const int mat_num = 3;      // 途中計算の行列の数
+    double *tmp = (double *)malloc(dim * dim * sizeof(double));
+    double c = 0.0;             // c = [(y)^T]s
     int i, j;
     
+    // メモリ確保
     for (i = 0; i < mat_num; i++)
         mat[i] = (double *)malloc(dim * dim * sizeof(double));
     
