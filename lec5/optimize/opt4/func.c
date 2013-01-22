@@ -3,6 +3,7 @@
  *  氏名: 岩成達哉
  *      課題4: より早く収束するアルゴリズムを実装
  *          準ニュートン法に黄金分割法を組み込んで実装した
+ *          初期値は ./a.out x0 x1 ... と入力する(デフォルトは0.0)
  */
 
 #include <math.h>
@@ -20,6 +21,12 @@ double f_value(const double x[])
 {
     // cos(x) + sin(y) + cos(z)
     return cos(x[0]) + sin(x[1]) + cos(x[2]);
+}
+
+/* 関数を表示する */
+void f_print()
+{
+    printf("f = cos(x) + sin(y) + cos(z)\n");
 }
 
 /* 勾配を計算する */

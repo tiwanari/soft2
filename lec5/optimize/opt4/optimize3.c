@@ -3,6 +3,7 @@
  *  氏名: 岩成達哉
  *      課題4: より早く収束するアルゴリズムを実装
  *          準ニュートン法に黄金分割法を組み込んで実装した
+ *          初期値は ./a.out x0 x1 ... と入力する(デフォルトは0.0)
  */
 
 #include <math.h>
@@ -38,55 +39,50 @@ double line_search(const int dim, const double x[], const double d[],
     double a = 0.0;
     double b = 1.0;
     
-    double width = b - a;
-    double right = b - TAU * width;
-    double left  = a + TAU * width;
-    double f_right, f_left;
+    double w = b - a;
+    double p = b - TAU * w;
+    double q  = a + TAU * w;
+    double fp, fq;
     double *tmp = (double *)malloc(dim * sizeof(double));
     int i;
     
     // 右側の値
     for (i = 0; i < dim; i++)
-        tmp[i] = x[i] + left * d[i];
-    f_right = get_value(tmp);
-    
-    // 右側の値
-    for (i = 0; i < dim; i++)
-        tmp[i] = x[i] + right * d[i];
-    f_right = get_value(tmp);
+        tmp[i] = x[i] + p * d[i];
+    fp = get_value(tmp);
     
     // 左側の値
     for (i = 0; i < dim; i++)
-        tmp[i] = x[i] + left * d[i];
-    f_left = get_value(tmp);
+        tmp[i] = x[i] + q * d[i];
+    fq = get_value(tmp);
     
     // 最適なαを探す
-    while (width >= EPSILON)
+    while (w >= EPSILON)    // 幅が小さくなるまで計算
     {
         // 調べる点の値を更新
-        if (f_right >= f_left)
+        if (fp >= fq)   // fp が fqより大きいなら[p,b]にある
         {
-            a       = right;
-            width   = b - a;
-            right   = left;
-            f_right = f_left;
-            left    = a + TAU * width;
+            a   = p;
+            w   = b - a;
+            p   = q;
+            fp  = fq;
+            q   = a + TAU * w;
             
             for (i = 0; i < dim; i++)
-                tmp[i] = x[i] + left * d[i];
-            f_left = get_value(tmp);
+                tmp[i] = x[i] + q * d[i];
+            fq = get_value(tmp);
         }
-        else
+        else   // fq が fpより大きいなら[a,q]にある
         {
-            b       = left;
-            width   = b - a;
-            left    = right;
-            f_left  = f_right;
-            right   = b - TAU * width;
+            b   = q;
+            w   = b - a;
+            q   = p;
+            fq  = fp;
+            p   = b - TAU * w;
             
             for (i = 0; i < dim; i++)
-                tmp[i] = x[i] + right * d[i];
-            f_right = get_value(tmp);
+                tmp[i] = x[i] + p * d[i];
+            fp = get_value(tmp);
         }
     }
     

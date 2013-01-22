@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g
 LDLIBS = -lm
-OBJS = main.o func.o optimize3.o
+OBJS = main.o func.o optimize.o
 
 a.out:	$(OBJS)
 	$(CC) $(OBJS) $(LDLIBS)

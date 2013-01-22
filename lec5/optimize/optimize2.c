@@ -53,5 +53,8 @@ int optimize(const double alpha, const int dim, double x[],
         for (i = 0; i < dim; i++)
             x[i] -= alpha * g[i];
     }
+    
+    free(g);
+    
     return iter;
 }
